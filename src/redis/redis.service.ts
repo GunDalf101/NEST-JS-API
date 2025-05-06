@@ -1,85 +1,91 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Redis from 'ioredis';
+import { createClient, RedisClientType } from 'redis';
 
 @Injectable()
-export class RedisService implements OnModuleInit, OnModuleDestroy {
-  private redisClient: Redis | null = null;
+export class RedisService implements OnModuleInit {
   private readonly logger = new Logger(RedisService.name);
-  private redisEnabled = false;
+  private client: RedisClientType | null = null;
+  private enabled: boolean;
 
-  constructor(private configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) {
+    this.enabled = configService.get('REDIS_ENABLED') === 'true';
+  }
 
   async onModuleInit() {
+    if (!this.enabled) {
+      return;
+    }
+
     try {
-      this.redisClient = new Redis({
-        host: this.configService.get<string>('REDIS_HOST', 'localhost'),
-        port: this.configService.get<number>('REDIS_PORT', 6379),
-        maxRetriesPerRequest: 1,
-        retryStrategy: () => null, // Don't retry connections
+      const url = this.configService.get('REDIS_URL', 'redis://localhost:6379');
+      this.client = createClient({ url });
+
+      this.client.on('error', (err) => {
+        this.logger.error('Redis connection error:', err);
       });
-      
-      // Test the connection
-      await this.redisClient.ping();
-      this.redisEnabled = true;
-      this.logger.log('Successfully connected to Redis');
+
+      await this.client.connect();
     } catch (error) {
-      this.redisEnabled = false;
-      this.logger.warn('Redis connection failed, running without caching');
-      // Close the client if it was created but couldn't connect
-      if (this.redisClient) {
-        this.redisClient.disconnect();
-        this.redisClient = null;
-      }
+      this.logger.error('Failed to connect to Redis:', error);
+      // Don't throw error to allow app to function without Redis
+      this.enabled = false;
     }
   }
 
   async onModuleDestroy() {
-    if (this.redisClient) {
-      await this.redisClient.quit();
-    }
-  }
-
-  isEnabled(): boolean {
-    return this.redisEnabled;
-  }
-
-  getClient(): Redis | null {
-    return this.redisClient;
-  }
-
-  async set(key: string, value: string, expireIn?: number): Promise<void> {
-    if (!this.redisEnabled || !this.redisClient) return;
-    
-    try {
-      if (expireIn) {
-        await this.redisClient.set(key, value, 'EX', expireIn);
-      } else {
-        await this.redisClient.set(key, value);
+    if (this.client) {
+      try {
+        await this.client.disconnect();
+      } catch (error) {
+        this.logger.error('Error disconnecting from Redis:', error);
       }
-    } catch (error) {
-      this.logger.warn(`Redis set operation failed: ${error.message}`);
     }
   }
 
   async get(key: string): Promise<string | null> {
-    if (!this.redisEnabled || !this.redisClient) return null;
-    
+    if (!this.enabled || !this.client) {
+      return null;
+    }
+
     try {
-      return await this.redisClient.get(key);
+      return await this.client.get(key);
     } catch (error) {
-      this.logger.warn(`Redis get operation failed: ${error.message}`);
+      this.logger.error(`Error getting key ${key}:`, error);
       return null;
     }
   }
 
-  async del(key: string): Promise<void> {
-    if (!this.redisEnabled || !this.redisClient) return;
-    
-    try {
-      await this.redisClient.del(key);
-    } catch (error) {
-      this.logger.warn(`Redis del operation failed: ${error.message}`);
+  async set(key: string, value: string, ttl?: number): Promise<boolean> {
+    if (!this.enabled || !this.client) {
+      return false;
     }
+
+    try {
+      const options = ttl ? { EX: ttl } : undefined;
+      await this.client.set(key, value, options);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error setting key ${key}:`, error);
+      return false;
+    }
+  }
+
+  async del(key: string): Promise<boolean> {
+    if (!this.enabled || !this.client) {
+      return false;
+    }
+
+    try {
+      await this.client.del(key);
+      return true;
+    } catch (error) {
+      this.logger.error(`Error deleting key ${key}:`, error);
+      return false;
+    }
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
   }
 }

@@ -54,3 +54,16 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+
+# Prisma
+/prisma/migrations
+/prisma/*.db
+/prisma/*.db-journal
+
+# Redis
+dump.rdb
+
+# Misc
+.eslintcache
+.npm
+.node_repl_history
