@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { RecordNotFoundException, UniqueConstraintException } from '../common/exceptions/prisma.exceptions';
-import { Prisma } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import * as bcrypt from 'bcrypt';
 
 // Mock bcrypt
@@ -95,7 +95,7 @@ describe('UsersService', () => {
       };
 
       // Create a proper Prisma error
-      const prismaError = new Prisma.PrismaClientKnownRequestError('Unique constraint violation', {
+      const prismaError = new PrismaClientKnownRequestError('Unique constraint violation', {
         code: 'P2002',
         clientVersion: '2.0.0',
         meta: { target: ['email'] }

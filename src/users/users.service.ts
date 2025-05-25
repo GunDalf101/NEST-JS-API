@@ -5,6 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { hash } from 'bcrypt';
 import { RecordNotFoundException, UniqueConstraintException } from '../common/exceptions/prisma.exceptions';
 import { Prisma } from '@prisma/client';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+
 
 @Injectable()
 export class UsersService {
@@ -30,7 +32,7 @@ export class UsersService {
 
       return user;
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error instanceof PrismaClientKnownRequestError){
         if (error.code === 'P2002') {
           throw new UniqueConstraintException('email');
         }

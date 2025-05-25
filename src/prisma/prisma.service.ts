@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../../generated/prisma';
+
 import { DatabaseException, RecordNotFoundException, UniqueConstraintException } from '../common/exceptions/prisma.exceptions';
 
 @Injectable()
@@ -28,14 +29,21 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   }
 
   async cleanDatabase() {
-    const models = Reflect.ownKeys(this).filter(key => {
-      return typeof this[key] === 'object' && this[key]?.deleteMany;
-    });
+    const modelKeys = Reflect.ownKeys(this).filter((key) => {
+      return (
+        typeof key === 'string' &&
+        typeof (this as any)[key]?.deleteMany === 'function'
+      );
+    }) as string[];
 
-    return await this.$transaction(
-      models.map(model => this[model].deleteMany())
+    const deleteOperations = modelKeys.map((model) =>
+      (this as any)[model].deleteMany()
     );
+
+    return this.$transaction(deleteOperations);
   }
+
+
 
   async transaction<T>(fn: (prisma: this) => Promise<T>): Promise<T> {
     return this.$transaction(async (prisma) => {
